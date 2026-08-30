@@ -78,29 +78,18 @@ class TicketPanelView(discord.ui.View):
         if TICKET_CATEGORY_ID:
             category = guild.get_channel(int(TICKET_CATEGORY_ID))
 
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            member: discord.PermissionOverwrite(
-                view_channel=True, send_messages=True, read_message_history=True, attach_files=True
-            ),
-            guild.me: discord.PermissionOverwrite(
-                view_channel=True, send_messages=True, manage_channels=True, read_message_history=True
-            ),
-        }
-        if staff_role is not None:
-            overwrites[staff_role] = discord.PermissionOverwrite(
-                view_channel=True, send_messages=True, read_message_history=True
-            )
-
         await interaction.response.defer(ephemeral=True)
 
         channel = await guild.create_text_channel(
             name=f"ticket-{sanitize_channel_name(member.name)}",
             category=category,
-            overwrites=overwrites,
             topic=f"{TICKET_TOPIC_PREFIX}{member.id}",
             reason=f"Ticket created by {member} ({member.id})",
         )
+
+        await channel.set_permissions(member, read_messages=True, send_messages=True, read_message_history=True, attach_files=True)
+        await channel.set_permissions(staff_role, read_messages=True, send_messages=True, read_message_history=True, attach_files=True)
+        await channel.set_permissions(guild.default_role, view_channel=False)
 
         welcome_embed = discord.Embed(
             title="Ticket Created",
