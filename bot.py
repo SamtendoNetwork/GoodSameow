@@ -25,7 +25,6 @@ R2_PUBLIC_URL_BASE = os.getenv("R2_PUBLIC_URL_BASE")
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
