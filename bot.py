@@ -43,6 +43,11 @@ def sanitize_channel_name(name: str) -> str:
     return cleaned.strip("-") or "user"
 
 
+def sanitize_filename(name: str) -> str:
+    cleaned = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in name)
+    return cleaned.strip("_") or "file"
+
+
 def is_ticket_channel(channel: discord.abc.GuildChannel) -> bool:
     return isinstance(channel, discord.TextChannel) and bool(
         channel.topic and channel.topic.startswith(TICKET_TOPIC_PREFIX)
@@ -55,6 +60,32 @@ def find_open_ticket(guild: discord.Guild, user_id: int) -> discord.TextChannel 
         if channel.topic and channel.topic == marker:
             return channel
     return None
+
+
+async def upload_attachment_to_cdn(channel: discord.TextChannel, attachment: discord.Attachment) -> str | None:
+    try:
+        data = await attachment.read()
+    except (discord.HTTPException, discord.NotFound):
+        return None
+
+    attachment_key = (
+        f"transcripts/{channel.id}/attachments/{attachment.id}-{sanitize_filename(attachment.filename)}"
+    )
+
+    def upload():
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=attachment_key,
+            Body=io.BytesIO(data),
+            ContentType=attachment.content_type or "application/octet-stream",
+        )
+
+    try:
+        await bot.loop.run_in_executor(None, upload)
+    except Exception:
+        return None
+
+    return f"{R2_PUBLIC_URL_BASE.rstrip('/')}/tickets/{attachment_key}"
 
 
 class TicketPanelView(discord.ui.View):
@@ -195,7 +226,11 @@ async def close_ticket(interaction: discord.Interaction):
         content = message.content or "[no text content]"
         lines.append(f"[{timestamp}] {message.author} ({message.author.id}): {content}")
         for attachment in message.attachments:
-            lines.append(f"    Attachment: {attachment.url}")
+            attachment_url = await upload_attachment_to_cdn(channel, attachment)
+            if attachment_url:
+                lines.append(f"    Attachment: {attachment_url}")
+            else:
+                lines.append(f"    Attachment (failed to upload, original may expire): {attachment.filename}")
     transcript_text = "\n".join(lines)
 
     object_key = f"transcripts/{channel.name}-{channel.id}.txt"
