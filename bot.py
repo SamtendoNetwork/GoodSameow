@@ -43,6 +43,12 @@ def sanitize_channel_name(name: str) -> str:
     return cleaned.strip("-") or "user"
 
 
+def is_ticket_channel(channel: discord.abc.GuildChannel) -> bool:
+    return isinstance(channel, discord.TextChannel) and bool(
+        channel.topic and channel.topic.startswith(TICKET_TOPIC_PREFIX)
+    )
+
+
 def find_open_ticket(guild: discord.Guild, user_id: int) -> discord.TextChannel | None:
     marker = f"{TICKET_TOPIC_PREFIX}{user_id}"
     for channel in guild.text_channels:
@@ -125,13 +131,60 @@ async def send_embed(interaction: discord.Interaction):
 
 @app_commands.guild_only()
 @app_commands.checks.has_role(STAFF_ROLE_ID)
+@app_commands.describe(member="The member to add to this ticket.")
+@app_commands.command(name="add", description="Add a member to this ticket.")
+async def add_member(interaction: discord.Interaction, member: discord.Member):
+    channel = interaction.channel
+
+    if not is_ticket_channel(channel):
+        await interaction.response.send_message(
+            "This command can only be used inside a ticket channel.", ephemeral=True
+        )
+        return
+
+    await channel.set_permissions(
+        member,
+        view_channel=True,
+        send_messages=True,
+        read_message_history=True,
+        attach_files=True,
+        reason=f"Added to ticket by {interaction.user}",
+    )
+    await interaction.response.send_message(f"{member.mention} has been added to this ticket.")
+
+
+@app_commands.guild_only()
+@app_commands.checks.has_role(STAFF_ROLE_ID)
+@app_commands.describe(member="The member to remove from this ticket.")
+@app_commands.command(name="remove", description="Remove a member from this ticket.")
+async def remove_member(interaction: discord.Interaction, member: discord.Member):
+    channel = interaction.channel
+
+    if not is_ticket_channel(channel):
+        await interaction.response.send_message(
+            "This command can only be used inside a ticket channel.", ephemeral=True
+        )
+        return
+
+    owner_id = int(channel.topic.removeprefix(TICKET_TOPIC_PREFIX))
+    if member.id == owner_id:
+        await interaction.response.send_message(
+            "You can't remove the ticket owner this way. Use /close to close the ticket instead.",
+            ephemeral=True,
+        )
+        return
+
+    await channel.set_permissions(member, overwrite=None, reason=f"Removed from ticket by {interaction.user}")
+    await interaction.response.send_message(f"{member.mention} has been removed from this ticket.")
+
+
+@app_commands.guild_only()
+@app_commands.checks.has_role(STAFF_ROLE_ID)
 @app_commands.command(name="close", description="Close this ticket and save a transcript.")
 async def close_ticket(interaction: discord.Interaction):
     channel = interaction.channel
 
-    if not isinstance(channel, discord.TextChannel) or not (
-        channel.topic and channel.topic.startswith(TICKET_TOPIC_PREFIX)
-    ):
+    if not is_ticket_channel(channel):
         await interaction.response.send_message(
             "This command can only be used inside a ticket channel.", ephemeral=True
         )
@@ -197,6 +250,8 @@ async def close_ticket(interaction: discord.Interaction):
 
 
 bot.tree.add_command(send_embed)
+bot.tree.add_command(add_member)
+bot.tree.add_command(remove_member)
 bot.tree.add_command(close_ticket)
 
 
