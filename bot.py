@@ -273,10 +273,84 @@ async def close_ticket(interaction: discord.Interaction):
     await channel.delete(reason=f"Ticket closed by {interaction.user}")
 
 
+@app_commands.guild_only()
+@app_commands.checks.has_role(STAFF_ROLE_ID)
+@app_commands.describe(member="The member to create the ticket for.")
+@app_commands.command(name="force-create", description="Force create a ticket for a member.")
+async def force_create_ticket(interaction: discord.Interaction, member: discord.Member):
+    guild = interaction.guild
+
+    existing = find_open_ticket(guild, member.id)
+    if existing is not None:
+        await interaction.response.send_message(
+            f"{member.mention} already has an open ticket: {existing.mention}",
+            ephemeral=True,
+        )
+        return
+
+    staff_role = guild.get_role(STAFF_ROLE_ID)
+
+    category = None
+    if TICKET_CATEGORY_ID:
+        category = guild.get_channel(int(TICKET_CATEGORY_ID))
+
+    await interaction.response.defer(ephemeral=True)
+
+    channel = await guild.create_text_channel(
+        name=f"ticket-{sanitize_channel_name(member.name)}",
+        category=category,
+        topic=f"{TICKET_TOPIC_PREFIX}{member.id}",
+        reason=f"Ticket force-created by {interaction.user} for {member} ({member.id})",
+    )
+
+    await channel.set_permissions(
+        member,
+        read_messages=True,
+        send_messages=True,
+        read_message_history=True,
+        attach_files=True,
+    )
+
+    if staff_role is not None:
+        await channel.set_permissions(
+            staff_role,
+            read_messages=True,
+            send_messages=True,
+            read_message_history=True,
+            attach_files=True,
+        )
+
+    await channel.set_permissions(
+        guild.default_role,
+        view_channel=False,
+    )
+
+    welcome_embed = discord.Embed(
+        title="Ticket Created",
+        description=f"Welcome, {member.mention}! Please describe your issue and a member of staff will be with you shortly.",
+        color=discord.Color.green(),
+    )
+
+    ping_content = member.mention
+    if staff_role is not None:
+        ping_content += f" {staff_role.mention}"
+
+    await channel.send(
+        content=ping_content,
+        embed=welcome_embed,
+    )
+
+    await interaction.followup.send(
+        f"Ticket created for {member.mention}: {channel.mention}",
+        ephemeral=True,
+    )
+
+
 bot.tree.add_command(send_embed)
 bot.tree.add_command(add_member)
 bot.tree.add_command(remove_member)
 bot.tree.add_command(close_ticket)
+bot.tree.add_command(force_create_ticket)
 
 
 @bot.event
