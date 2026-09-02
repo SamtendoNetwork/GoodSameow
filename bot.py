@@ -246,12 +246,6 @@ async def close_ticket(interaction: discord.Interaction):
     await bot.loop.run_in_executor(None, upload)
     transcript_url = f"{R2_PUBLIC_URL_BASE.rstrip('/')}/tickets/{object_key}"
 
-    if owner is not None:
-        try:
-            await owner.send("Thanks for contacting us!")
-        except (discord.Forbidden, discord.HTTPException):
-            pass
-
     log_channel = bot.get_channel(LOG_CHANNEL_ID)
     if log_channel is None:
         try:
